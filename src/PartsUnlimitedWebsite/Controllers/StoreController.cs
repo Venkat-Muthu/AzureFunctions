@@ -3,9 +3,13 @@
 
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Caching.Memory;
+using Newtonsoft.Json;
 using PartsUnlimited.Models;
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http;
+using System.Threading.Tasks;
 
 namespace PartsUnlimited.Controllers
 {
@@ -33,14 +37,35 @@ namespace PartsUnlimited.Controllers
         //
         // GET: /Store/Browse?category=Brakes
 
-        public IActionResult Browse(int categoryId)
+        public async Task<IActionResult> Browse(int categoryId)
         {
-            // Retrieve Category category and its Associated associated Products products from database
-
+            // Retrieve category and its associated products from database
             // TODO [EF] Swap to native support for loading related data when available
             var categoryModel = _db.Categories.Single(g => g.CategoryId == categoryId);
-            categoryModel.Products = _db.Products.Where(a => a.CategoryId == categoryModel.CategoryId).ToList();
 
+            if (categoryModel.Name.ToLower().Equals("oil"))
+            {
+                var url = "https://featureflagforapi20200410.azurewebsites.net/api/HttpTrigger1?code=pQIBpvdK4ejsuioKaBCSHhFLPwwFA9Sougd6S0tQRgVc8aglZJKU1g==";
+                if (HttpContext.User.Identity.IsAuthenticated)
+                {
+                    url += HttpContext.User.Identity.Name.Equals("Administrator@test.com") ? "&UserID=1" : "&UserID=50";
+                }
+                using (HttpClient client = new HttpClient())
+                {
+                    var jsonProducts = await client.GetStringAsync(url);
+                    var products = JsonConvert.DeserializeObject<List<Product>>(jsonProducts);
+                    foreach (Product product in products)
+                    {
+                        product.ProductId = _db.Products.First(a => a.SkuNumber == product.SkuNumber).ProductId;
+                    }
+
+                    categoryModel.Products = products;
+                }
+            }
+            else
+            {
+                categoryModel.Products = _db.Products.Where(a => a.CategoryId == categoryModel.CategoryId).ToList();
+            }
             return View(categoryModel);
         }
 
